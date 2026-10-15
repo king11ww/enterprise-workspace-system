@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ResourceType {
+  MEETING_ROOM
+  DESK
+  DEVICE
+}
+
+enum ResourceStatus {
+  AVAILABLE
+  MAINTENANCE
+  UNAVAILABLE
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique // ADMIN, MANAGER, EMPLOYEE
+  description String?
+  permissions String[] @default([])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  users       User[]
+
+  @@map("roles")
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  fullName     String     @map("full_name")
+  roleId       String     @map("role_id")
+  role         Role       @relation(fields: [roleId], references: [id])
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  bookings     Booking[]
+  auditLogs    AuditLog[]
+
+  @@map("users")
+}
+
+model Resource {
+  id          String         @id @default(uuid())
+  name        String
+  type        ResourceType
+  capacity    Int            @default(1)
+  status      ResourceStatus @default(AVAILABLE)
+  location    String?
+  description String?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  bookings    Booking[]
+
+  @@index([type, status])
+  @@map("resources")
+}
+
+model Booking {
+  id         String        @id @default(uuid())
+  userId     String        @map("user_id")
+  resourceId String        @map("resource_id")
+  startTime  DateTime      @map("start_time")
+  endTime    DateTime      @map("end_time")
+  status     BookingStatus @default(CONFIRMED)
+  title      String?
+  notes      String?
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId, startTime, endTime])
+  @@index([userId])
+  @@map("bookings")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  action     String // CREATE, UPDATE, DELETE, LOGIN, CANCEL_BOOKING
+  entityType String   @map("entity_type") // User, Resource, Booking
+  entityId   String   @map("entity_id")
+  payload    Json? // Snapshot of state or diff
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@map("audit_logs")
+}
