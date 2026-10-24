@@ -12,6 +12,7 @@ import { RedisService } from '../redis/redis.service.js';
 import type { AuthenticatedUser } from '../auth/decorators/current-user.decorator.js';
 import { CreateBookingDto } from './dto/create-booking.dto.js';
 import { QueryBookingDto } from './dto/query-booking.dto.js';
+import { NotificationsProducerService } from '../notifications/notifications-producer.service.js';
 
 /** Postgres exclusion constraint created in migration `booking_no_overlap`. */
 const OVERLAP_CONSTRAINT = 'bookings_no_overlap';
@@ -32,6 +33,7 @@ export class BookingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly notificationsProducer: NotificationsProducerService,
   ) {}
 
   /**
@@ -91,7 +93,7 @@ export class BookingsService {
         });
       }
 
-      return await this.prisma.$transaction(async (tx) => {
+      const created = await this.prisma.$transaction(async (tx) => {
         const booking = await tx.booking.create({
           data: {
             userId: user.id,
@@ -121,6 +123,22 @@ export class BookingsService {
 
         return booking;
       });
+
+      // Dispatch notification to BullMQ queue asynchronously (non-blocking)
+      void this.notificationsProducer.sendBookingConfirmation({
+        bookingId: created.id,
+        userId: created.user.id,
+        userEmail: created.user.email,
+        userName: created.user.fullName,
+        resourceName: created.resource.name,
+        resourceLocation: created.resource.location,
+        startTime: created.startTime.toISOString(),
+        endTime: created.endTime.toISOString(),
+        title: created.title,
+        type: 'CONFIRMED',
+      });
+
+      return created;
     } catch (error) {
       if (this.isOverlapViolation(error)) {
         throw new ConflictException('Khung giờ này đã có người đặt');
@@ -194,8 +212,8 @@ export class BookingsService {
       throw new BadRequestException('Không thể hủy lịch đặt đã kết thúc');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const cancelled = await tx.booking.update({
+    const cancelled = await this.prisma.$transaction(async (tx) => {
+      const cancelledBooking = await tx.booking.update({
         where: { id },
         data: { status: 'CANCELLED' },
         include: bookingInclude,
@@ -211,8 +229,24 @@ export class BookingsService {
         },
       });
 
-      return cancelled;
+      return cancelledBooking;
     });
+
+    // Dispatch cancellation notification asynchronously
+    void this.notificationsProducer.sendBookingCancellation({
+      bookingId: cancelled.id,
+      userId: cancelled.user.id,
+      userEmail: cancelled.user.email,
+      userName: cancelled.user.fullName,
+      resourceName: cancelled.resource.name,
+      resourceLocation: cancelled.resource.location,
+      startTime: cancelled.startTime.toISOString(),
+      endTime: cancelled.endTime.toISOString(),
+      title: cancelled.title,
+      type: 'CANCELLED',
+    });
+
+    return cancelled;
   }
 
   private isOverlapViolation(error: unknown): boolean {
