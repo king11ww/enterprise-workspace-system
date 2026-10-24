@@ -5,6 +5,8 @@ import { AppService } from './app.service.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ResourcesModule } from './resources/resources.module.js';
+import { RedisModule } from './redis/redis.module.js';
+import { BookingsModule } from './bookings/bookings.module.js';
 
 @Module({
   imports: [
@@ -13,8 +15,10 @@ import { ResourcesModule } from './resources/resources.module.js';
       envFilePath: ['.env', '../.env'],
     }),
     PrismaModule,
+    RedisModule,
     AuthModule,
     ResourcesModule,
+    BookingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
