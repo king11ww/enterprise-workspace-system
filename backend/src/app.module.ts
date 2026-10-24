@@ -9,6 +9,7 @@ import { ResourcesModule } from './resources/resources.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { BookingsModule } from './bookings/bookings.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
+import { AiModule } from './ai/ai.module.js';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { NotificationsModule } from './notifications/notifications.module.js';
     ResourcesModule,
     NotificationsModule,
     BookingsModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
